@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body style="margin:0; padding:0; background:#f4f4f4;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4; padding:16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="860" cellpadding="0" cellspacing="0" style="max-width:860px; width:100%; background:#ffffff; border:1px solid #e9e9e9;">
+          <tr>
+            <td style="padding:18px; font-family:Arial, sans-serif; color:#222;">
+              <div style="font-size:20px; font-weight:700; margin:0 0 8px 0;">
+                Production Monitoring — Hourly Report
+              </div>
+
+              <div style="color:#666; font-size:12px; margin-bottom:14px;">
+                Period: last {{ hours }} hour(s) • Generated at: {{ generated_at }}
+              </div>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+                <tr>
+                  <td style="padding:0 6px 12px 0;" valign="top">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f7f7; border:1px solid #eeeeee;">
+                      <tr><td style="padding:12px;">
+                        <div style="color:#666; font-size:12px;">Total production</div>
+                        <div style="font-size:26px; font-weight:700; margin-top:6px;">{{ totals.total_pieces }}</div>
+                      </td></tr>
+                    </table>
+                  </td>
+
+                  <td style="padding:0 6px 12px 6px;" valign="top">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f7f7; border:1px solid #eeeeee;">
+                      <tr><td style="padding:12px;">
+                        <div style="color:#666; font-size:12px;">Quality OK / NOK</div>
+                        <div style="font-size:26px; font-weight:700; margin-top:6px;">{{ totals.total_ok }} / {{ totals.total_nok }}</div>
+                      </td></tr>
+                    </table>
+                  </td>
+
+                  <td style="padding:0 0 12px 6px;" valign="top">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f7f7; border:1px solid #eeeeee;">
+                      <tr><td style="padding:12px;">
+                        <div style="color:#666; font-size:12px;">Yield</div>
+                        <div style="font-size:26px; font-weight:700; margin-top:6px;">{{ yield_pct }}%</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="font-size:15px; font-weight:700; margin:12px 0 8px 0;">
+                Per machine summary
+              </div>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-family:Arial, sans-serif; font-size:13px;">
+                <thead>
+                  <tr>
+                    <th align="left" style="padding:8px 10px; border-bottom:2px solid #dddddd;">Machine</th>
+                    <th align="right" style="padding:8px 10px; border-bottom:2px solid #dddddd;">Pieces</th>
+                    <th align="right" style="padding:8px 10px; border-bottom:2px solid #dddddd;">OK</th>
+                    <th align="right" style="padding:8px 10px; border-bottom:2px solid #dddddd;">NOK</th>
+                    <th align="right" style="padding:8px 10px; border-bottom:2px solid #dddddd;">Yield</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if rows|length == 0 %}
+                    <tr>
+                      <td colspan="5" style="padding:10px; color:#666; font-size:12px; border-bottom:1px solid #eeeeee;">
+                        No data in this period.
+                      </td>
+                    </tr>
+                  {% else %}
+                    {% for r in rows %}
+                    <tr>
+                      <td style="padding:8px 10px; border-bottom:1px solid #eeeeee;">{{ r.machine_id }}</td>
+                      <td align="right" style="padding:8px 10px; border-bottom:1px solid #eeeeee;">{{ r.pieces }}</td>
+                      <td align="right" style="padding:8px 10px; border-bottom:1px solid #eeeeee;">{{ r.ok }}</td>
+                      <td align="right" style="padding:8px 10px; border-bottom:1px solid #eeeeee;">{{ r.nok }}</td>
+                      <td align="right" style="padding:8px 10px; border-bottom:1px solid #eeeeee;">{{ r.yield_pct }}%</td>
+                    </tr>
+                    {% endfor %}
+                  {% endif %}
+                </tbody>
+              </table>
+
+              <div style="text-align:center; color:#888; font-size:11px; margin-top:14px;">
+                Automated report — please do not reply.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
