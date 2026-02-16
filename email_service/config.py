@@ -23,6 +23,8 @@ EMAIL_TO = [x.strip() for x in (os.getenv("EMAIL_TO", "")).split(",") if x.strip
 
 # ---- Report options ----
 REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "1"))
+YIELD_ALERT_THRESHOLD = float(os.getenv("YIELD_ALERT_THRESHOLD", "90"))
+CHART_LOOKBACK_HOURS = int(os.getenv("CHART_LOOKBACK_HOURS", "8"))
 
 def validate_config() -> None:
     missing = []
