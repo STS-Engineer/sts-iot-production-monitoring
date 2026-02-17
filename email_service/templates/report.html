@@ -2,108 +2,168 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
+    <tr><td align="center">
+      <table width="900" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e6e6e6;">
+        <tr>
+          <td style="padding:18px 22px;border-bottom:3px solid #1f4e79;">
+            <div style="font-size:20px;font-weight:700;color:#1f4e79;">ESP32 Production Monitoring System</div>
+            <div style="margin-top:6px;font-size:12px;color:#666;">
+              Hourly Production Report — last {{ hours }} hour(s) • Generated at: {{ generated_at }}
+            </div>
+          </td>
+        </tr>
 
-<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial, sans-serif;">
+        {% if alerts|length > 0 %}
+        <tr>
+          <td style="padding:14px 22px;background:#fff3cd;border-bottom:1px solid #f0e1a1;color:#664d03;">
+            <div style="font-weight:700;">⚠️ Alerts (threshold {{ alert_threshold }}%)</div>
+            <ul style="margin:8px 0 0 18px;padding:0;">
+              {% for a in alerts %}
+              <li style="margin:4px 0;">{{ a }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+        </tr>
+        {% endif %}
 
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
-<tr>
-<td align="center">
+        <tr>
+          <td style="padding:18px 22px;">
+            <!-- KPIs -->
+            <table width="100%" cellpadding="10" cellspacing="0">
+              <tr>
+                <td width="25%" align="center" style="background:#1f4e79;color:#fff;">
+                  <div style="font-size:12px;">Total Output</div>
+                  <div style="font-size:28px;font-weight:800;">{{ totals.total_pieces }}</div>
+                  <div style="font-size:12px;opacity:.9;">
+                    Δ {{ trends.pieces_delta }}
+                    {% if trends.pieces_pct is not none %} ({{ trends.pieces_pct|round(1) }}%) {% endif %}
+                  </div>
+                </td>
+                <td width="25%" align="center" style="background:#2e7d32;color:#fff;">
+                  <div style="font-size:12px;">OK</div>
+                  <div style="font-size:28px;font-weight:800;">{{ totals.total_ok }}</div>
+                  <div style="font-size:12px;opacity:.9;">Δ {{ trends.ok_delta }}</div>
+                </td>
+                <td width="25%" align="center" style="background:#c62828;color:#fff;">
+                  <div style="font-size:12px;">NOK</div>
+                  <div style="font-size:28px;font-weight:800;">{{ totals.total_nok }}</div>
+                  <div style="font-size:12px;opacity:.9;">Δ {{ trends.nok_delta }}</div>
+                </td>
+                <td width="25%" align="center" style="background:#455a64;color:#fff;">
+                  <div style="font-size:12px;">Quality rate (%)</div>
+                  <div style="font-size:28px;font-weight:800;">
+                    {% if yield_pct is none %}N/A{% else %}{{ yield_pct }}%{% endif %}
+                  </div>
+                  <div style="font-size:12px;opacity:.9;">
+                    {% if trends.yield_delta is none %}Δ N/A{% else %}Δ {{ trends.yield_delta }} pts{% endif %}
+                  </div>
+                </td>
+              </tr>
+            </table>
 
-<table width="900" cellpadding="0" cellspacing="0" style="background:#ffffff;border-collapse:collapse;">
+            <div style="height:10px;"></div>
 
-<tr>
-<td style="padding:20px 25px;border-bottom:3px solid #1f4e79;">
-  <h2 style="margin:0;color:#1f4e79;">ESP32 Production Monitoring System</h2>
-  <p style="margin:5px 0 0 0;font-size:13px;color:#666;">
-    Hourly Production Report — Last {{ hours }} hour(s)<br>
-    Generated at: {{ generated_at }}
-  </p>
-</td>
-</tr>
+            <!-- PPM -->
+            <table width="100%" cellpadding="10" cellspacing="0" style="border:1px solid #e6e6e6;">
+              <tr>
+                <td>
+                  <div style="font-size:12px;color:#666;">Parts Per Minute (PPM)</div>
+                  <div style="font-size:20px;font-weight:800;color:#111;">{{ ppm }}</div>
+                  <div style="font-size:12px;color:#666;">
+                    Δ {{ trends.ppm_delta }}
+                    {% if trends.ppm_pct is not none %} ({{ trends.ppm_pct }}%) {% endif %}
+                  </div>
+                </td>
+              </tr>
+            </table>
 
-<tr>
-<td style="padding:20px;">
+            <div style="height:14px;"></div>
 
-<!-- KPI SECTION -->
-<table width="100%" cellpadding="10" cellspacing="0">
-<tr>
+            <!-- Chart -->
+            {% if chart_b64 %}
+            <div style="font-size:14px;font-weight:700;color:#1f4e79;margin:0 0 8px 0;">Hourly Output</div>
+            <img src="data:image/png;base64,{{ chart_b64 }}" style="width:100%;max-width:860px;border:1px solid #e6e6e6;" />
+            {% endif %}
 
-<td width="25%" align="center" style="background:#1f4e79;color:#ffffff;">
-  <div style="font-size:13px;">Total Output</div>
-  <div style="font-size:28px;font-weight:bold;">{{ totals.total_pieces }}</div>
-</td>
+            <div style="height:18px;"></div>
 
-<td width="25%" align="center" style="background:#2e7d32;color:#ffffff;">
-  <div style="font-size:13px;">OK</div>
-  <div style="font-size:28px;font-weight:bold;">{{ totals.total_ok }}</div>
-</td>
+            <!-- Ranking Table -->
+            <div style="font-size:14px;font-weight:700;color:#1f4e79;margin:0 0 8px 0;">Machine Ranking (best → worst)</div>
+            <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+              <tr style="background:#e9ecef;font-weight:700;">
+                <td>Rank</td>
+                <td>Machine</td>
+                <td align="right">Pieces</td>
+                <td align="right">OK</td>
+                <td align="right">NOK</td>
+                <td align="right">Quality rate (%)</td>
+              </tr>
 
-<td width="25%" align="center" style="background:#c62828;color:#ffffff;">
-  <div style="font-size:13px;">NOK</div>
-  <div style="font-size:28px;font-weight:bold;">{{ totals.total_nok }}</div>
-</td>
+              {% if ranked_rows|length == 0 %}
+              <tr><td colspan="6" style="color:#888;text-align:center;padding:14px;">No data in this period.</td></tr>
+              {% else %}
+                {% for r in ranked_rows %}
+                <tr style="border-bottom:1px solid #eee;">
+                  <td>{{ loop.index }}</td>
+                  <td>{{ r.machine_id }}</td>
+                  <td align="right">{{ r.pieces }}</td>
+                  <td align="right">{{ r.ok }}</td>
+                  <td align="right">{{ r.nok }}</td>
+                  <td align="right" {% if r.yield_pct is not none and r.yield_pct < alert_threshold %}style="color:#c62828;font-weight:700;"{% endif %}>
+                    {% if r.yield_pct is none %}N/A{% else %}{{ r.yield_pct }}%{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              {% endif %}
+            </table>
 
-<td width="25%" align="center" style="background:#455a64;color:#ffffff;">
-  <div style="font-size:13px;">Yield</div>
-  <div style="font-size:28px;font-weight:bold;">{{ yield_pct }}%</div>
-</td>
+            <div style="height:18px;"></div>
 
-</tr>
-</table>
+            <!-- Machine details (per-machine stats) -->
+            <div style="font-size:14px;font-weight:700;color:#1f4e79;margin:0 0 8px 0;">Machine details</div>
+            <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;border:1px solid #eee;">
+              <tr style="background:#fafafa;font-weight:700;">
+                <td>Machine</td>
+                <td align="right">Pieces</td>
+                <td align="right">OK</td>
+                <td align="right">NOK</td>
+                <td align="right">Quality rate (%)</td>
+                <td align="right">PPM</td>
+                <td align="right">Avg cycle (ms)</td>
+                <td align="right">Last event</td>
+              </tr>
+              {% if rows|length == 0 %}
+                <tr><td colspan="8" style="color:#888;text-align:center;padding:14px;">No machine data available.</td></tr>
+              {% else %}
+                {% for r in rows %}
+                <tr style="border-bottom:1px solid #f3f3f3;">
+                  <td>{{ r.machine_id }}</td>
+                  <td align="right">{{ r.pieces }}</td>
+                  <td align="right">{{ r.ok }}</td>
+                  <td align="right">{{ r.nok }}</td>
+                  <td align="right">{% if r.yield_pct is none %}N/A{% else %}{{ r.yield_pct }}%{% endif %}</td>
+                  <td align="right">{{ r.ppm }}</td>
+                  <td align="right">{% if r.avg_cycle_ms is none %}—{% else %}{{ r.avg_cycle_ms }}{% endif %}</td>
+                  <td align="right">{% if r.last_event is none %}—{% else %}{{ r.last_event }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+              {% endif %}
+            </table>
 
-<!-- MACHINE TABLE -->
-<h3 style="margin-top:30px;color:#1f4e79;">Machine Performance</h3>
+          </td>
+        </tr>
 
-<table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
-<tr style="background:#e9ecef;font-weight:bold;">
-  <td>Machine</td>
-  <td align="right">Pieces</td>
-  <td align="right">OK</td>
-  <td align="right">NOK</td>
-  <td align="right">Yield</td>
-</tr>
-
-{% for r in rows %}
-<tr style="border-bottom:1px solid #dddddd;">
-  <td>{{ r.machine_id }}</td>
-  <td align="right">{{ r.pieces }}</td>
-  <td align="right">{{ r.ok }}</td>
-  <td align="right">{{ r.nok }}</td>
-  <td align="right"
-      {% if r.yield_pct < 90 %}
-        style="color:#c62828;font-weight:bold;"
-      {% endif %}
-  >
-    {{ r.yield_pct }}%
-  </td>
-</tr>
-{% endfor %}
-
-{% if rows|length == 0 %}
-<tr>
-  <td colspan="5" align="center" style="padding:15px;color:#888;">
-    No production data recorded in this period.
-  </td>
-</tr>
-{% endif %}
-
-</table>
-
-</td>
-</tr>
-
-<tr>
-<td style="padding:15px;text-align:center;font-size:12px;color:#999;">
-Automated Report — ESP32 Production Monitoring System
-</td>
-</tr>
-
-</table>
-
-</td>
-</tr>
-</table>
-
+        <tr>
+          <td style="padding:14px 22px;text-align:center;font-size:12px;color:#999;">
+            Automated report — please do not reply.
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>

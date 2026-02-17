@@ -11,6 +11,9 @@ def _window_clause(offset_hours: int, duration_hours: int) -> str:
     """
 
 def get_report_data():
+    import logging
+    logger = logging.getLogger(__name__)
+
     dur = REPORT_LOOKBACK_HOURS
     params = {"dur": dur, "chart_hours": CHART_LOOKBACK_HOURS}
 
@@ -25,14 +28,43 @@ def get_report_data():
                   WHERE {_window_clause(0, dur)} AND result='NOK'), 0)::int AS total_nok;
     """
 
-    sql_prod_cur = f"""
-      SELECT machine_id,
-             COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces
-      FROM public.production_events
-      WHERE {_window_clause(0, dur)}
-      GROUP BY machine_id
-      ORDER BY machine_id;
-    """
+    # Detect whether cycle_time_ms column exists; fall back if not present.
+    has_cycle_col = False
+    try:
+        col_check = fetch_all(
+            """SELECT EXISTS(
+                   SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='production_events' AND column_name='cycle_time_ms'
+                 ) AS exists;"""
+        )
+        has_cycle_col = bool(col_check[0].get('exists'))
+    except Exception as e:
+        logger.debug("Could not check information_schema for cycle_time_ms: %s", e)
+        has_cycle_col = False
+
+    if has_cycle_col:
+        sql_prod_cur = f"""
+          SELECT machine_id,
+                 COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces,
+                 ROUND(AVG(NULLIF(cycle_time_ms,0))::numeric,1) AS avg_cycle_ms,
+                 MAX(event_time) AS last_event
+          FROM public.production_events
+          WHERE {_window_clause(0, dur)}
+          GROUP BY machine_id
+          ORDER BY machine_id;
+        """
+    else:
+        logger.info("Column 'cycle_time_ms' not found in production_events — avg_cycle_ms will be empty in the report")
+        sql_prod_cur = f"""
+          SELECT machine_id,
+                 COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces,
+                 NULL::numeric AS avg_cycle_ms,
+                 MAX(event_time) AS last_event
+          FROM public.production_events
+          WHERE {_window_clause(0, dur)}
+          GROUP BY machine_id
+          ORDER BY machine_id;
+        """
 
     sql_qual_cur = f"""
       SELECT machine_id,
@@ -148,12 +180,12 @@ def compute_trends(cur: dict, prev: dict, yield_cur, yield_prev, ppm_cur: float,
 def build_alerts(yield_pct, rows: list[dict], threshold: float) -> list[str]:
     alerts = []
     if yield_pct is not None and yield_pct < threshold:
-        alerts.append(f"Global yield is below threshold: {yield_pct:.1f}% < {threshold:.1f}%")
+        alerts.append(f"Global quality rate is below threshold: {yield_pct:.1f}% < {threshold:.1f}%")
 
     low = [r for r in rows if (r["yield_pct"] is not None and r["yield_pct"] < threshold)]
     if low:
         worst = sorted(low, key=lambda r: r["yield_pct"])[0]
-        alerts.append(f"Machine with lowest yield: {worst['machine_id']} ({worst['yield_pct']:.1f}%)")
+        alerts.append(f"Machine with lowest quality rate: {worst['machine_id']} ({worst['yield_pct']:.1f}%)")
 
     return alerts
 
@@ -167,6 +199,10 @@ def merge_by_machine(prod_rows: list[dict], qual_rows: list[dict]) -> list[dict]
             "ok": 0,
             "nok": 0,
             "yield_pct": None,
+            # new fields (may be None if DB doesn't provide them)
+            "avg_cycle_ms": None if r.get("avg_cycle_ms") is None else float(r.get("avg_cycle_ms")),
+            "last_event": r.get("last_event"),
+            "ppm": 0.0,
         }
 
     for r in qual_rows:
@@ -177,6 +213,9 @@ def merge_by_machine(prod_rows: list[dict], qual_rows: list[dict]) -> list[dict]
             "ok": 0,
             "nok": 0,
             "yield_pct": None,
+            "avg_cycle_ms": None,
+            "last_event": None,
+            "ppm": 0.0,
         }
         cur["ok"] = int(r.get("ok_count") or 0)
         cur["nok"] = int(r.get("nok_count") or 0)
@@ -188,5 +227,22 @@ def merge_by_machine(prod_rows: list[dict], qual_rows: list[dict]) -> list[dict]
         row["yield_pct"] = (row["ok"] * 100.0 / q_total) if q_total > 0 else None
         if row["yield_pct"] is not None:
             row["yield_pct"] = round(row["yield_pct"], 1)
+
+        # compute per-machine PPM (parts per minute) for the report window
+        try:
+            minutes = float(REPORT_LOOKBACK_HOURS) * 60.0
+            row["ppm"] = round((row.get("pieces", 0) / minutes), 2) if minutes > 0 else 0.0
+        except Exception:
+            row["ppm"] = 0.0
+
+        # format last_event for templates (if present)
+        le = row.get("last_event")
+        if le is not None:
+            try:
+                # expect a datetime-like object
+                row["last_event"] = le.strftime("%Y-%m-%d %H:%M:%S") if hasattr(le, "strftime") else str(le)
+            except Exception:
+                row["last_event"] = str(le)
+
         out.append(row)
     return out

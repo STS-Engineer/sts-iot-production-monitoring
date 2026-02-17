@@ -65,7 +65,7 @@ def build_pdf_bytes(data: dict, chart_b64: str | None) -> bytes:
         ['Total Pieces', str(totals.get('total_pieces', 'N/A'))],
         ['OK', str(totals.get('total_ok', 'N/A'))],
         ['NOK', str(totals.get('total_nok', 'N/A'))],
-        ['Yield', f"{yield_pct or 'N/A'}%"],
+        ['Quality rate (%)', f"{yield_pct or 'N/A'}%"],
         ['PPM', str(ppm)],
     ]
     
@@ -82,7 +82,40 @@ def build_pdf_bytes(data: dict, chart_b64: str | None) -> bytes:
     ]))
     
     elements.append(summary_table)
-    
+    elements.append(Spacer(1, 0.2 * inch))
+
+    # Per-machine detail table
+    rows = data.get('rows', [])
+    if rows:
+        table_data = [[
+            'Machine', 'Pieces', 'OK', 'NOK', 'Quality rate (%)', 'PPM', 'Avg cycle (ms)', 'Last event'
+        ]]
+        for r in rows:
+            yield_str = 'N/A' if r.get('yield_pct') is None else f"{r.get('yield_pct')}%"
+            avg_cycle = '—' if r.get('avg_cycle_ms') is None else str(r.get('avg_cycle_ms'))
+            last_evt = '—' if r.get('last_event') is None else str(r.get('last_event'))
+            table_data.append([
+                r.get('machine_id'),
+                str(r.get('pieces', 0)),
+                str(r.get('ok', 0)),
+                str(r.get('nok', 0)),
+                yield_str,
+                str(r.get('ppm', 0.0)),
+                avg_cycle,
+                last_evt,
+            ])
+
+        detail_table = Table(table_data, colWidths=[1.1*inch, 0.8*inch, 0.6*inch, 0.6*inch, 0.8*inch, 0.8*inch, 1.2*inch, 1.5*inch])
+        detail_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ]))
+        elements.append(Paragraph('<b>Machine details</b>', styles['Heading3']))
+        elements.append(Spacer(1, 0.05 * inch))
+        elements.append(detail_table)
+
     # Build PDF
     doc.build(elements)
     return buffer.getvalue()
