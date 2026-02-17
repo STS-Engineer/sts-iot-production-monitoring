@@ -37,6 +37,19 @@ def send_report() -> None:
     chart_b64 = hourly_bar_chart_base64(data["hourly_series"])
     data["chart_b64"] = chart_b64
 
+    # prefer inline CID image for desktop email clients (Outlook doesn't support data: URIs)
+    chart_bytes = None
+    chart_cid = None
+    if chart_b64:
+        import base64
+        try:
+            chart_bytes = base64.b64decode(chart_b64)
+            chart_cid = "chart_image"
+            data["chart_cid"] = chart_cid
+        except Exception:
+            chart_bytes = None
+            chart_cid = None
+
     # html
     html = render_template("report.html", data)
 
@@ -66,10 +79,13 @@ def send_report() -> None:
 
     subject = f"[PM] Hourly Report (last {data['hours']}h) — {data['generated_at']}"
     send_html_email(
-        EMAIL_TO, subject, html,
+        EMAIL_TO,
+        subject,
+        html,
         text_body=text,
         pdf_bytes=pdf_bytes,
         pdf_filename="hourly_report.pdf",
+        inline_images={"chart_image": chart_bytes} if chart_bytes else None,
     )
 
     logging.info("✅ Email sent to: %s", ", ".join(EMAIL_TO))

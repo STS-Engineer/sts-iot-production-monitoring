@@ -4,6 +4,7 @@ import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 
 from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
 
@@ -16,18 +17,44 @@ def send_html_email(
     text_body: str | None = None,
     pdf_bytes: bytes | None = None,
     pdf_filename: str = "hourly_report.pdf",
+    inline_images: dict[str, bytes] | None = None,
 ):
+    """Send an HTML email with optional inline images (CID) and PDF attachment.
+
+    inline_images: mapping from content-id (without <>) to raw bytes (PNG/JPEG). The template
+    should reference them as <img src="cid:<id>">. This improves compatibility with Outlook.
+    """
     msg = MIMEMultipart("mixed")
     msg["From"] = EMAIL_FROM
     msg["To"] = ", ".join(to_list)
     msg["Subject"] = subject
 
+    # multipart/related -> contains the HTML + inline images
+    related = MIMEMultipart("related")
     alt = MIMEMultipart("alternative")
+
     if not text_body:
         text_body = "Automated report. Please view in an HTML-capable email client."
     alt.attach(MIMEText(text_body, "plain", "utf-8"))
     alt.attach(MIMEText(html_body, "html", "utf-8"))
-    msg.attach(alt)
+    related.attach(alt)
+
+    # Attach inline images (CID)
+    if inline_images:
+        for cid, data in inline_images.items():
+            if not data:
+                continue
+            try:
+                img = MIMEImage(data)
+                img.add_header("Content-ID", f"<{cid}>")
+                img.add_header("Content-Disposition", "inline", filename=cid)
+                related.attach(img)
+            except Exception:
+                logger = __import__("logging").getLogger(__name__)
+                logger.exception("Failed to attach inline image %s", cid)
+
+    # attach the related part to the main message
+    msg.attach(related)
 
     if pdf_bytes:
         part = MIMEApplication(pdf_bytes, _subtype="pdf")

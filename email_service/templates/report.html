@@ -84,7 +84,10 @@
             <div style="height:14px;"></div>
 
             <!-- Chart -->
-            {% if chart_b64 %}
+            {% if chart_cid %}
+            <div style="font-size:14px;font-weight:700;color:#1f4e79;margin:0 0 8px 0;">Hourly Output</div>
+            <img src="cid:{{ chart_cid }}" style="width:100%;max-width:860px;border:1px solid #e6e6e6;" />
+            {% elif chart_b64 %}
             <div style="font-size:14px;font-weight:700;color:#1f4e79;margin:0 0 8px 0;">Hourly Output</div>
             <img src="data:image/png;base64,{{ chart_b64 }}" style="width:100%;max-width:860px;border:1px solid #e6e6e6;" />
             {% endif %}
