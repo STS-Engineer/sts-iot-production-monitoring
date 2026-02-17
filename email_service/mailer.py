@@ -50,8 +50,7 @@ def send_html_email(
                 img.add_header("Content-Disposition", "inline", filename=cid)
                 related.attach(img)
             except Exception:
-                logger = __import__("logging").getLogger(__name__)
-                logger.exception("Failed to attach inline image %s", cid)
+                logging.getLogger(__name__).exception("Failed to attach inline image %s", cid)
 
     # attach the related part to the main message
     msg.attach(related)
