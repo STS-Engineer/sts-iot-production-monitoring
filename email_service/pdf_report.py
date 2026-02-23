@@ -21,6 +21,18 @@ def build_pdf_bytes(data: dict, chart_b64: str | None) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1f77b4'),
+        spaceAfter=30,
+    )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -84,6 +96,20 @@ def build_pdf_bytes(data: dict, chart_b64: str | None) -> bytes:
     elements.append(summary_table)
     elements.append(Spacer(1, 0.2 * inch))
 
+    # Place defected chart here, after summary and before machine details
+    defected_chart_b64 = data.get('defected_chart_b64')
+    if defected_chart_b64:
+        try:
+            defected_bytes = base64.b64decode(defected_chart_b64)
+            defected_buffer = BytesIO(defected_bytes)
+            defected_img = Image(defected_buffer, width=3.5 * inch, height=1.8 * inch)
+            elements.append(Paragraph('<b>Total Defected Pieces (NOK)</b>', styles['Heading3']))
+            elements.append(defected_img)
+            elements.append(Spacer(1, 0.2 * inch))
+        except Exception as e:
+            elements.append(Paragraph(f"<i>Defected chart could not be embedded: {str(e)}</i>", styles['Normal']))
+            elements.append(Spacer(1, 0.2 * inch))
+
     # Per-machine detail table
     rows = data.get('rows', [])
     if rows:
@@ -105,7 +131,9 @@ def build_pdf_bytes(data: dict, chart_b64: str | None) -> bytes:
                 last_evt,
             ])
 
-        detail_table = Table(table_data, colWidths=[1.1*inch, 0.8*inch, 0.6*inch, 0.6*inch, 0.8*inch, 0.8*inch, 1.2*inch, 1.5*inch])
+        # Ajustement des largeurs pour éviter le chevauchement
+        # Nouvelle répartition : élargir 'Quality rate (%)', ajuster les autres
+        detail_table = Table(table_data, colWidths=[1.0*inch, 0.7*inch, 0.7*inch, 0.7*inch, 1.3*inch, 0.7*inch, 1.1*inch, 1.4*inch])
         detail_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),

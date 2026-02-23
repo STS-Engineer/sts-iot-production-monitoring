@@ -37,6 +37,22 @@ def send_report() -> None:
     chart_b64 = hourly_bar_chart_base64(data["hourly_series"])
     data["chart_b64"] = chart_b64
 
+    # defected pieces chart
+    from charts import defected_pieces_per_machine_bar_chart_base64
+    defected_chart_b64 = defected_pieces_per_machine_bar_chart_base64(data["rows"])
+    data["defected_chart_b64"] = defected_chart_b64
+    defected_chart_bytes = None
+    defected_chart_cid = None
+    if defected_chart_b64:
+        import base64
+        try:
+            defected_chart_bytes = base64.b64decode(defected_chart_b64)
+            defected_chart_cid = "defected_chart_image"
+            data["defected_chart_cid"] = defected_chart_cid
+        except Exception:
+            defected_chart_bytes = None
+            defected_chart_cid = None
+
     # prefer inline CID image for desktop email clients (Outlook doesn't support data: URIs)
     chart_bytes = None
     chart_cid = None
@@ -78,6 +94,11 @@ def send_report() -> None:
     pdf_bytes = build_pdf_bytes(data, chart_b64)
 
     subject = f"[PM] Hourly Report (last {data['hours']}h) — {data['generated_at']}"
+    inline_images = {}
+    if chart_bytes:
+        inline_images["chart_image"] = chart_bytes
+    if defected_chart_bytes:
+        inline_images["defected_chart_image"] = defected_chart_bytes
     send_html_email(
         EMAIL_TO,
         subject,
@@ -85,7 +106,7 @@ def send_report() -> None:
         text_body=text,
         pdf_bytes=pdf_bytes,
         pdf_filename="hourly_report.pdf",
-        inline_images={"chart_image": chart_bytes} if chart_bytes else None,
+        inline_images=inline_images if inline_images else None,
     )
 
     logging.info("✅ Email sent to: %s", ", ".join(EMAIL_TO))

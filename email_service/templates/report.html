@@ -1,3 +1,5 @@
+
+
 <!doctype html>
 <html>
 <head>
@@ -7,7 +9,7 @@
 <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
     <tr><td align="center">
-      <table width="900" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e6e6e6;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border:1px solid #e6e6e6;">
         <tr>
           <td style="padding:18px 22px;border-bottom:3px solid #1f4e79;">
             <div style="font-size:20px;font-weight:700;color:#1f4e79;">ESP32 Production Monitoring System</div>
@@ -16,6 +18,7 @@
             </div>
           </td>
         </tr>
+
 
         {% if alerts|length > 0 %}
         <tr>
@@ -90,6 +93,32 @@
             {% elif chart_b64 %}
             <div style="font-size:14px;font-weight:700;color:#1f4e79;margin:0 0 8px 0;">Hourly Output</div>
             <img src="data:image/png;base64,{{ chart_b64 }}" style="width:100%;max-width:860px;border:1px solid #e6e6e6;" />
+            {% endif %}
+            <div style="height:18px;"></div>
+
+            <!-- Defected Pieces Chart and Per-Machine Table (now after Hourly Output) -->
+            {% if defected_chart_b64 %}
+            <div style="font-size:14px;font-weight:700;color:#c62828;margin:18px 0 8px 0;text-align:center;">Total Defected Pieces (NOK)</div>
+            <div style="background:#fff;padding:8px 0;text-align:center;">
+              {% if defected_chart_cid %}
+                <img src="cid:{{ defected_chart_cid }}" style="max-width:100%;width:350px;height:auto;display:inline-block;border:1px solid #e6e6e6;background:#fff;" />
+              {% else %}
+                <img src="data:image/png;base64,{{ defected_chart_b64 }}" style="max-width:100%;width:350px;height:auto;display:inline-block;border:1px solid #e6e6e6;background:#fff;" />
+              {% endif %}
+            </div>
+            <div style="height:12px;"></div>
+            <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;border:1px solid #eee;margin: 0 auto 18px auto;max-width:350px;">
+              <tr style="background:#fafafa;font-weight:700;">
+                <td>Machine</td>
+                <td align="right">Defected (NOK)</td>
+              </tr>
+              {% for r in rows %}
+              <tr style="border-bottom:1px solid #f3f3f3;">
+                <td>{{ r.machine_id }}</td>
+                <td align="right">{{ r.nok }}</td>
+              </tr>
+              {% endfor %}
+            </table>
             {% endif %}
 
             <div style="height:18px;"></div>
