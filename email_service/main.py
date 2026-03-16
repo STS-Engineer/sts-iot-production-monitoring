@@ -8,11 +8,18 @@ import datetime
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from config import validate_config, EMAIL_TO
-from report import get_report_data
-from charts import hourly_bar_chart_base64
-from pdf_report import build_pdf_bytes
-from mailer import send_html_email
+if __package__:
+    from .config import validate_config, EMAIL_TO
+    from .report import get_report_data
+    from .charts import hourly_bar_chart_base64
+    from .pdf_report import build_pdf_bytes
+    from .mailer import send_html_email
+else:
+    from config import validate_config, EMAIL_TO
+    from report import get_report_data
+    from charts import hourly_bar_chart_base64
+    from pdf_report import build_pdf_bytes
+    from mailer import send_html_email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -27,7 +34,7 @@ def render_template(template_name: str, context: dict) -> str:
     return tpl.render(**context)
 
 
-def send_report() -> None:
+def send_report() -> dict:
     """Generate the report and send one email (single run)."""
     validate_config()
 
@@ -38,7 +45,10 @@ def send_report() -> None:
     data["chart_b64"] = chart_b64
 
     # defected pieces chart
-    from charts import defected_pieces_per_machine_bar_chart_base64
+    if __package__:
+        from .charts import defected_pieces_per_machine_bar_chart_base64
+    else:
+        from charts import defected_pieces_per_machine_bar_chart_base64
     defected_chart_b64 = defected_pieces_per_machine_bar_chart_base64(data["rows"])
     data["defected_chart_b64"] = defected_chart_b64
     defected_chart_bytes = None
@@ -110,6 +120,20 @@ def send_report() -> None:
     )
 
     logging.info("✅ Email sent to: %s", ", ".join(EMAIL_TO))
+
+    return {
+        "recipient": ", ".join(EMAIL_TO),
+        "subject": subject,
+        "template_used": "IoT Summary Report",
+        "generated_at": data.get("generated_at"),
+        "hours": data.get("hours"),
+        "totals": data.get("totals"),
+        "rows": data.get("rows"),
+        "html": html,
+        "text": text,
+        "pdf_filename": "hourly_report.pdf",
+        "pdf_bytes": pdf_bytes,
+    }
 
 
 def run_scheduler(interval_minutes: int = 60, align_to_hour: bool = False) -> None:

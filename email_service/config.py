@@ -1,7 +1,11 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env locally if present. In Azure later, real env vars will be used.
+# Load .env from this package directory first, then fallback to default lookup.
+_HERE = Path(__file__).resolve().parent
+_LOCAL_ENV = _HERE / ".env"
+load_dotenv(dotenv_path=_LOCAL_ENV, override=False)
 load_dotenv(override=False)
 
 # ---- PostgreSQL ----

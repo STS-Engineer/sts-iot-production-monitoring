@@ -1,6 +1,9 @@
 import psycopg
 from psycopg.rows import dict_row
-from config import PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD, PGSSLMODE
+if __package__:
+    from .config import PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD, PGSSLMODE
+else:
+    from config import PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD, PGSSLMODE
 
 def get_conn():
     return psycopg.connect(

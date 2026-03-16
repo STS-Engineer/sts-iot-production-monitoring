@@ -6,7 +6,10 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from email.mime.image import MIMEImage
 
-from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
+if __package__:
+    from .config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
+else:
+    from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
 
 logger = logging.getLogger(__name__)
 

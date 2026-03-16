@@ -1,5 +1,8 @@
 import traceback
-from report import get_report_data
+if __package__:
+    from .report import get_report_data
+else:
+    from report import get_report_data
 
 try:
     data = get_report_data()

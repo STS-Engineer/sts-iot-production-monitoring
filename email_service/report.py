@@ -1,6 +1,10 @@
 from datetime import datetime
-from db import fetch_all
-from config import REPORT_LOOKBACK_HOURS, CHART_LOOKBACK_HOURS, YIELD_ALERT_THRESHOLD
+if __package__:
+    from .db import fetch_all
+    from .config import REPORT_LOOKBACK_HOURS, CHART_LOOKBACK_HOURS, YIELD_ALERT_THRESHOLD
+else:
+    from db import fetch_all
+    from config import REPORT_LOOKBACK_HOURS, CHART_LOOKBACK_HOURS, YIELD_ALERT_THRESHOLD
 
 def _window_clause(offset_hours: int, duration_hours: int) -> str:
     # window: [now - (offset+duration), now - offset]
