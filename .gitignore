@@ -10,3 +10,11 @@ venv/
 # Environment variables
 .env
 .env.*
+
+# Local runtime artifacts
+.run/
+server.err
+server.out
+
+# Local-only launcher
+run_app.cmd
