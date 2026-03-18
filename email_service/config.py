@@ -23,8 +23,6 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 
 EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USER)
-EMAIL_TO = [x.strip() for x in (os.getenv("EMAIL_TO", "")).split(",") if x.strip()]
-
 # ---- Report options ----
 REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "1"))
 YIELD_ALERT_THRESHOLD = float(os.getenv("YIELD_ALERT_THRESHOLD", "90"))
@@ -39,9 +37,6 @@ def validate_config() -> None:
     for k in ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "EMAIL_FROM"]:
         if not globals().get(k):
             missing.append(k)
-
-    if not EMAIL_TO:
-        missing.append("EMAIL_TO")
 
     if missing:
         raise RuntimeError(f"Missing config values: {', '.join(missing)}")

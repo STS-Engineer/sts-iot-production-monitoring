@@ -1,3 +1,12 @@
+import base64
+from io import BytesIO
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
 def defected_pieces_per_machine_bar_chart_base64(rows) -> str | None:
     """
     Generate a bar chart for defected (NOK) pieces per machine.
@@ -26,9 +35,6 @@ def defected_pieces_per_machine_bar_chart_base64(rows) -> str | None:
     plt.close(fig)
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     return b64
-import base64
-from io import BytesIO
-import matplotlib.pyplot as plt
 
 def hourly_bar_chart_base64(hourly_series: list[dict]) -> str | None:
     if not hourly_series:

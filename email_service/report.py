@@ -1,145 +1,149 @@
 from datetime import datetime
+
 if __package__:
     from .db import fetch_all
-    from .config import REPORT_LOOKBACK_HOURS, CHART_LOOKBACK_HOURS, YIELD_ALERT_THRESHOLD
 else:
     from db import fetch_all
-    from config import REPORT_LOOKBACK_HOURS, CHART_LOOKBACK_HOURS, YIELD_ALERT_THRESHOLD
+
 
 def _window_clause(offset_hours: int, duration_hours: int) -> str:
-    # window: [now - (offset+duration), now - offset]
-    # offset=0 => last duration
     return f"""
       event_time >= now() - ({offset_hours + duration_hours} || ' hours')::interval
       AND event_time <  now() - ({offset_hours} || ' hours')::interval
     """
 
-def get_report_data():
-    import logging
-    logger = logging.getLogger(__name__)
 
-    dur = REPORT_LOOKBACK_HOURS
-    params = {"dur": dur, "chart_hours": CHART_LOOKBACK_HOURS}
+def get_report_data(system_id: str, profile: dict) -> dict:
+    dur = int(profile["report_lookback_hours"])
+    chart_hours = int(profile["chart_lookback_hours"])
+    threshold = float(profile["yield_alert_threshold"])
 
-    # -------- CURRENT WINDOW (last dur hours) --------
     sql_totals_cur = f"""
       SELECT
-        COALESCE((SELECT SUM(COALESCE(qty,1)) FROM public.production_events
-                  WHERE {_window_clause(0, dur)}), 0)::int AS total_pieces,
-        COALESCE((SELECT COUNT(*) FROM public.quality_events
-                  WHERE {_window_clause(0, dur)} AND result='OK'), 0)::int AS total_ok,
-        COALESCE((SELECT COUNT(*) FROM public.quality_events
-                  WHERE {_window_clause(0, dur)} AND result='NOK'), 0)::int AS total_nok;
+        COALESCE((
+            SELECT SUM(COALESCE(qty, 1))
+            FROM public.events
+            WHERE system_id = %(system_id)s
+              AND event_type = 'PRODUCTION'
+              AND {_window_clause(0, dur)}
+        ), 0)::int AS total_pieces,
+        COALESCE((
+            SELECT COUNT(*)
+            FROM public.events
+            WHERE system_id = %(system_id)s
+              AND event_type = 'QUALITY'
+              AND result = 'OK'
+              AND {_window_clause(0, dur)}
+        ), 0)::int AS total_ok,
+        COALESCE((
+            SELECT COUNT(*)
+            FROM public.events
+            WHERE system_id = %(system_id)s
+              AND event_type = 'QUALITY'
+              AND result = 'NOK'
+              AND {_window_clause(0, dur)}
+        ), 0)::int AS total_nok;
     """
 
-    # Detect whether cycle_time_ms column exists; fall back if not present.
-    has_cycle_col = False
-    try:
-        col_check = fetch_all(
-            """SELECT EXISTS(
-                   SELECT 1 FROM information_schema.columns
-                   WHERE table_schema='public' AND table_name='production_events' AND column_name='cycle_time_ms'
-                 ) AS exists;"""
-        )
-        has_cycle_col = bool(col_check[0].get('exists'))
-    except Exception as e:
-        logger.debug("Could not check information_schema for cycle_time_ms: %s", e)
-        has_cycle_col = False
-
-    if has_cycle_col:
-        sql_prod_cur = f"""
-          SELECT machine_id,
-                 COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces,
-                 ROUND(AVG(NULLIF(cycle_time_ms,0))::numeric,1) AS avg_cycle_ms,
-                 MAX(event_time) AS last_event
-          FROM public.production_events
-          WHERE {_window_clause(0, dur)}
-          GROUP BY machine_id
-          ORDER BY machine_id;
-        """
-    else:
-        logger.info("Column 'cycle_time_ms' not found in production_events — avg_cycle_ms will be empty in the report")
-        sql_prod_cur = f"""
-          SELECT machine_id,
-                 COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces,
-                 NULL::numeric AS avg_cycle_ms,
-                 MAX(event_time) AS last_event
-          FROM public.production_events
-          WHERE {_window_clause(0, dur)}
-          GROUP BY machine_id
-          ORDER BY machine_id;
-        """
-
-    sql_qual_cur = f"""
+    sql_prod_cur = f"""
       SELECT machine_id,
-             COUNT(*) FILTER (WHERE result='OK')::int  AS ok_count,
-             COUNT(*) FILTER (WHERE result='NOK')::int AS nok_count
-      FROM public.quality_events
-      WHERE {_window_clause(0, dur)}
+             COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces,
+             ROUND(AVG(NULLIF(cycle_time_ms, 0))::numeric, 1) AS avg_cycle_ms,
+             MAX(event_time) AS last_event
+      FROM public.events
+      WHERE system_id = %(system_id)s
+        AND event_type = 'PRODUCTION'
+        AND {_window_clause(0, dur)}
       GROUP BY machine_id
       ORDER BY machine_id;
     """
 
-    # -------- PREVIOUS WINDOW (the period before) --------
-    sql_totals_prev = f"""
-      SELECT
-        COALESCE((SELECT SUM(COALESCE(qty,1)) FROM public.production_events
-                  WHERE {_window_clause(dur, dur)}), 0)::int AS total_pieces,
-        COALESCE((SELECT COUNT(*) FROM public.quality_events
-                  WHERE {_window_clause(dur, dur)} AND result='OK'), 0)::int AS total_ok,
-        COALESCE((SELECT COUNT(*) FROM public.quality_events
-                  WHERE {_window_clause(dur, dur)} AND result='NOK'), 0)::int AS total_nok;
+    sql_qual_cur = f"""
+      SELECT machine_id,
+             COUNT(*) FILTER (WHERE result = 'OK')::int  AS ok_count,
+             COUNT(*) FILTER (WHERE result = 'NOK')::int AS nok_count
+      FROM public.events
+      WHERE system_id = %(system_id)s
+        AND event_type = 'QUALITY'
+        AND {_window_clause(0, dur)}
+      GROUP BY machine_id
+      ORDER BY machine_id;
     """
 
-    # -------- CHART DATA (last CHART_LOOKBACK_HOURS hours) --------
+    sql_totals_prev = f"""
+      SELECT
+        COALESCE((
+            SELECT SUM(COALESCE(qty, 1))
+            FROM public.events
+            WHERE system_id = %(system_id)s
+              AND event_type = 'PRODUCTION'
+              AND {_window_clause(dur, dur)}
+        ), 0)::int AS total_pieces,
+        COALESCE((
+            SELECT COUNT(*)
+            FROM public.events
+            WHERE system_id = %(system_id)s
+              AND event_type = 'QUALITY'
+              AND result = 'OK'
+              AND {_window_clause(dur, dur)}
+        ), 0)::int AS total_ok,
+        COALESCE((
+            SELECT COUNT(*)
+            FROM public.events
+            WHERE system_id = %(system_id)s
+              AND event_type = 'QUALITY'
+              AND result = 'NOK'
+              AND {_window_clause(dur, dur)}
+        ), 0)::int AS total_nok;
+    """
+
     sql_hourly = """
       SELECT date_trunc('hour', event_time) AS hour_bucket,
-             COALESCE(SUM(COALESCE(qty,1)),0)::int AS pieces
-      FROM public.production_events
-      WHERE event_time >= now() - (%(chart_hours)s || ' hours')::interval
+             COALESCE(SUM(COALESCE(qty, 1)), 0)::int AS pieces
+      FROM public.events
+      WHERE system_id = %(system_id)s
+        AND event_type = 'PRODUCTION'
+        AND event_time >= now() - (%(chart_hours)s || ' hours')::interval
       GROUP BY 1
       ORDER BY 1;
     """
 
-    totals = fetch_all(sql_totals_cur)[0]
-    totals_prev = fetch_all(sql_totals_prev)[0]
-    prod = fetch_all(sql_prod_cur)
-    qual = fetch_all(sql_qual_cur)
-    hourly = fetch_all(sql_hourly, {"chart_hours": CHART_LOOKBACK_HOURS})
+    params = {"system_id": system_id, "chart_hours": chart_hours}
+    totals = fetch_all(sql_totals_cur, params)[0]
+    totals_prev = fetch_all(sql_totals_prev, params)[0]
+    prod = fetch_all(sql_prod_cur, params)
+    qual = fetch_all(sql_qual_cur, params)
+    hourly = fetch_all(sql_hourly, params)
 
-    rows = merge_by_machine(prod, qual)
-
-    # Global yield
+    rows = merge_by_machine(prod, qual, dur)
     total_quality = totals["total_ok"] + totals["total_nok"]
     yield_pct = (totals["total_ok"] * 100.0 / total_quality) if total_quality > 0 else None
-
-    # Previous yield
     total_quality_prev = totals_prev["total_ok"] + totals_prev["total_nok"]
     yield_prev = (totals_prev["total_ok"] * 100.0 / total_quality_prev) if total_quality_prev > 0 else None
 
-    # Parts per minute (PPM)
     minutes = dur * 60.0
     ppm = (totals["total_pieces"] / minutes) if minutes > 0 else 0.0
     ppm_prev = (totals_prev["total_pieces"] / minutes) if minutes > 0 else 0.0
 
-    # Trends (delta & %)
     trends = compute_trends(
-        cur=totals, prev=totals_prev,
-        yield_cur=yield_pct, yield_prev=yield_prev,
-        ppm_cur=ppm, ppm_prev=ppm_prev
+        cur=totals,
+        prev=totals_prev,
+        yield_cur=yield_pct,
+        yield_prev=yield_prev,
+        ppm_cur=ppm,
+        ppm_prev=ppm_prev,
     )
 
-    # Ranking best->worst by yield, then pieces
     ranked = sorted(
         rows,
-        key=lambda r: ((r["yield_pct"] if r["yield_pct"] is not None else -1), r["pieces"]),
-        reverse=True
+        key=lambda row: ((row["yield_pct"] if row["yield_pct"] is not None else -1), row["pieces"]),
+        reverse=True,
     )
 
-    # Alerts
-    alerts = build_alerts(yield_pct, rows, YIELD_ALERT_THRESHOLD)
+    alerts = build_alerts(yield_pct, rows, threshold)
 
-    result = {
+    return {
+        "system_id": system_id,
         "hours": dur,
         "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
         "totals": totals,
@@ -149,70 +153,68 @@ def get_report_data():
         "ranked_rows": ranked,
         "trends": trends,
         "alerts": alerts,
-        "alert_threshold": YIELD_ALERT_THRESHOLD,
+        "alert_threshold": threshold,
         "hourly_series": [
-            {"label": h["hour_bucket"].strftime("%H:%M"), "pieces": int(h["pieces"])}
-            for h in hourly
+            {"label": bucket["hour_bucket"].strftime("%H:%M"), "pieces": int(bucket["pieces"])}
+            for bucket in hourly
         ],
     }
-    return result
+
 
 def compute_trends(cur: dict, prev: dict, yield_cur, yield_prev, ppm_cur: float, ppm_prev: float) -> dict:
     def delta(a, b):
-        return (a - b)
+        return a - b
 
     def pct(a, b):
         if b == 0:
             return None
         return (a - b) * 100.0 / b
 
-    out = {}
-    out["pieces_delta"] = delta(cur["total_pieces"], prev["total_pieces"])
-    out["pieces_pct"] = pct(cur["total_pieces"], prev["total_pieces"])
+    return {
+        "pieces_delta": delta(cur["total_pieces"], prev["total_pieces"]),
+        "pieces_pct": pct(cur["total_pieces"], prev["total_pieces"]),
+        "ok_delta": delta(cur["total_ok"], prev["total_ok"]),
+        "ok_pct": pct(cur["total_ok"], prev["total_ok"]),
+        "nok_delta": delta(cur["total_nok"], prev["total_nok"]),
+        "nok_pct": pct(cur["total_nok"], prev["total_nok"]),
+        "yield_delta": None if (yield_cur is None or yield_prev is None) else round(yield_cur - yield_prev, 1),
+        "ppm_delta": round(ppm_cur - ppm_prev, 2),
+        "ppm_pct": None if ppm_prev == 0 else round((ppm_cur - ppm_prev) * 100.0 / ppm_prev, 1),
+    }
 
-    out["ok_delta"] = delta(cur["total_ok"], prev["total_ok"])
-    out["ok_pct"] = pct(cur["total_ok"], prev["total_ok"])
-
-    out["nok_delta"] = delta(cur["total_nok"], prev["total_nok"])
-    out["nok_pct"] = pct(cur["total_nok"], prev["total_nok"])
-
-    out["yield_delta"] = None if (yield_cur is None or yield_prev is None) else round(yield_cur - yield_prev, 1)
-    out["ppm_delta"] = round(ppm_cur - ppm_prev, 2)
-    out["ppm_pct"] = None if ppm_prev == 0 else round((ppm_cur - ppm_prev) * 100.0 / ppm_prev, 1)
-    return out
 
 def build_alerts(yield_pct, rows: list[dict], threshold: float) -> list[str]:
     alerts = []
     if yield_pct is not None and yield_pct < threshold:
         alerts.append(f"Global quality rate is below threshold: {yield_pct:.1f}% < {threshold:.1f}%")
 
-    low = [r for r in rows if (r["yield_pct"] is not None and r["yield_pct"] < threshold)]
-    if low:
-        worst = sorted(low, key=lambda r: r["yield_pct"])[0]
+    low_rows = [row for row in rows if row["yield_pct"] is not None and row["yield_pct"] < threshold]
+    if low_rows:
+        worst = sorted(low_rows, key=lambda row: row["yield_pct"])[0]
         alerts.append(f"Machine with lowest quality rate: {worst['machine_id']} ({worst['yield_pct']:.1f}%)")
 
     return alerts
 
-def merge_by_machine(prod_rows: list[dict], qual_rows: list[dict]) -> list[dict]:
-    m = {}
-    for r in prod_rows:
-        mid = r["machine_id"]
-        m[mid] = {
-            "machine_id": mid,
-            "pieces": int(r.get("pieces") or 0),
+
+def merge_by_machine(prod_rows: list[dict], qual_rows: list[dict], report_lookback_hours: int) -> list[dict]:
+    merged: dict[str, dict] = {}
+    for row in prod_rows:
+        machine_id = row["machine_id"]
+        merged[machine_id] = {
+            "machine_id": machine_id,
+            "pieces": int(row.get("pieces") or 0),
             "ok": 0,
             "nok": 0,
             "yield_pct": None,
-            # new fields (may be None if DB doesn't provide them)
-            "avg_cycle_ms": None if r.get("avg_cycle_ms") is None else float(r.get("avg_cycle_ms")),
-            "last_event": r.get("last_event"),
+            "avg_cycle_ms": None if row.get("avg_cycle_ms") is None else float(row.get("avg_cycle_ms")),
+            "last_event": row.get("last_event"),
             "ppm": 0.0,
         }
 
-    for r in qual_rows:
-        mid = r["machine_id"]
-        cur = m.get(mid) or {
-            "machine_id": mid,
+    for row in qual_rows:
+        machine_id = row["machine_id"]
+        current = merged.get(machine_id) or {
+            "machine_id": machine_id,
             "pieces": 0,
             "ok": 0,
             "nok": 0,
@@ -221,32 +223,19 @@ def merge_by_machine(prod_rows: list[dict], qual_rows: list[dict]) -> list[dict]
             "last_event": None,
             "ppm": 0.0,
         }
-        cur["ok"] = int(r.get("ok_count") or 0)
-        cur["nok"] = int(r.get("nok_count") or 0)
-        m[mid] = cur
+        current["ok"] = int(row.get("ok_count") or 0)
+        current["nok"] = int(row.get("nok_count") or 0)
+        merged[machine_id] = current
 
     out = []
-    for mid, row in sorted(m.items()):
+    for machine_id, row in sorted(merged.items()):
         q_total = row["ok"] + row["nok"]
-        row["yield_pct"] = (row["ok"] * 100.0 / q_total) if q_total > 0 else None
-        if row["yield_pct"] is not None:
-            row["yield_pct"] = round(row["yield_pct"], 1)
-
-        # compute per-machine PPM (parts per minute) for the report window
-        try:
-            minutes = float(REPORT_LOOKBACK_HOURS) * 60.0
-            row["ppm"] = round((row.get("pieces", 0) / minutes), 2) if minutes > 0 else 0.0
-        except Exception:
-            row["ppm"] = 0.0
-
-        # format last_event for templates (if present)
-        le = row.get("last_event")
-        if le is not None:
-            try:
-                # expect a datetime-like object
-                row["last_event"] = le.strftime("%Y-%m-%d %H:%M:%S") if hasattr(le, "strftime") else str(le)
-            except Exception:
-                row["last_event"] = str(le)
-
+        row["yield_pct"] = round((row["ok"] * 100.0 / q_total), 1) if q_total > 0 else None
+        minutes = float(report_lookback_hours) * 60.0
+        row["ppm"] = round((row.get("pieces", 0) / minutes), 2) if minutes > 0 else 0.0
+        last_event = row.get("last_event")
+        if last_event is not None:
+            row["last_event"] = last_event.strftime("%Y-%m-%d %H:%M:%S") if hasattr(last_event, "strftime") else str(last_event)
         out.append(row)
+
     return out
